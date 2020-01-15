@@ -1,0 +1,188 @@
+﻿@using Bank.Application.Accounts.Commands.CreateAccountCredit
+@using Bank.Application.Accounts.Commands.CreateAccountDebit
+@using Bank.Application.Accounts.Commands.CreateAccountTransfer
+@using Bank.Common.Extensions
+@model Bank.Application.Accounts.Queries.GetAccountDetails.AccountDetailDto
+@{
+    ViewData["Title"] = "Account Details";
+}
+
+@if (TempData["Message"] != null)
+{
+<partial name="_AlertSuccess" />
+}
+@if (TempData["Error"] != null)
+{
+<partial name="_AlertError" />
+}
+
+
+<div class="container pt-3">
+    <div class="row">
+        <div class="col-6 col-lg-3 pb-3">
+            <ul class="list-group">
+                <li class="list-group-item list-group-item-primary">Account #@Model.AccountId</li>
+                <li class="list-group-item list-group-item-light text-dark font-weight-bold">Balance @Model.Balance?.ToSwedishKrona()</li>
+                @foreach (var disp in Model.Dispositions)
+                {
+                <li class="list-group-item list-group-item-light">@disp.Type | @disp.CustomerId</li>
+                }
+            </ul>
+        </div>
+        <div class="col-6 col-lg-6 offset-lg-3 text-lg-right">
+            <button type="button" class="btn btn-outline-primary mb-2" data-toggle="modal" data-target="#deposit">
+                <i class="fas fa-piggy-bank"></i> Deposit
+            </button>
+            <button type="button" class="btn btn-outline-primary mb-2" data-toggle="modal" data-target="#withdrawal">
+                <i class="fas fa-coins"></i> Withdrawal
+            </button>
+            <button type="button" class="btn btn-outline-primary mb-2" data-toggle="modal" data-target="#transfer">
+                <i class="fas fa-exchange-alt"></i> Transfer
+            </button>
+        </div>
+    </div>
+
+
+    <!-- Modals -->
+    <partial name="_DepositModal" model="@(new CreateAccountDepositCommand {AccountId = Model.AccountId})" />
+    <partial name="_DebitModal" model="@(new CreateAccountDebitCommand {AccountId = Model.AccountId})" />
+    <partial name="_TransferModal" model="@(new CreateAccountTransferCommand {AccountIdFrom = Model.AccountId})" />
+
+
+
+    <div class="row">
+        @if (Model.Loans.Any())
+        {
+        <div class="col-10">
+            <div class="table-responsive">
+                <table class="table table-sm w-75">
+                    <caption>Loans</caption>
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Amount</th>
+                            <th>Duration</th>
+                            <th>Amount</th>
+                            <th>Date</th>
+                            <th>Payments</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var loan in Model.Loans)
+                            {
+                        <tr>
+                            <td>@loan.Status</td>
+                            <td>@loan.Amount.ToSwedishKrona()</td>
+                            <td>@loan.Duration</td>
+                            <td>@loan.Amount.ToSwedishKrona()</td>
+                            <td>@loan.Date.ToShortDateString()</td>
+                            <td>@loan.Payments</td>
+                        </tr>
+                            }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        }
+        @if (Model.PermanentOrders.Any())
+        {
+        <div class="col-10">
+            <div class="table-responsive">
+                <table class="table table-sm w-75">
+                    <caption>Permanent Orders</caption>
+                    <thead>
+                        <tr>
+                            <th>Account To</th>
+                            <th>Bank To</th>
+                            <th>Symbol</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var order in Model.PermanentOrders)
+                            {
+                        <tr>
+                            <td>@order.AccountTo</td>
+                            <td>@order.Bank</td>
+                            <td>@order.Symbol</td>
+                            <td>@order.Amount?.ToSwedishKrona()</td>
+                        </tr>
+                            }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        }
+
+
+    </div>
+    <div class="row pt-5 mt-3">
+        <div class="col-10 offset-1">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped" id="transactions">
+                    <caption>Transactions</caption>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Operation</th>
+                            <th>Symbol</th>
+                            <th>Amount</th>
+                            <th>Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody><!-- Appends through AJAX --></tbody>
+                </table>
+            </div>
+            <button type="button" class="btn btn-outline-primary" id="transactionBtn">Show More</button>
+        </div>
+    </div>
+</div>
+
+
+
+@section Scripts
+{
+    <script async>
+
+        (function($) {
+                const maxLimit = 20;
+                let currentOffset = 0;
+                let hasMorePages;
+                const tableBody = $("#transactions tbody");
+                const showMoreBtn = $("#transactionBtn");
+                const accountId = @Model.AccountId;
+
+                async function fetchTransactions(limit, offset) {
+                    const res = await fetch(`/api/accounts/${accountId}/limit=${limit}/offset=${offset}`);
+                    const data = await res.json();
+                    hasMorePages = data.hasMorePages;
+                    appendTransactions(data);
+                }
+
+                function appendTransactions({ transactions }) {
+                    const data = transactions.map(({ date, type, operation, symbol, amount, balance }) => {
+                        symbol = symbol !== null ? symbol : "";
+                        return `<tr>
+                                    <td>${date.split("T")[0]}</td>
+                                    <td>${type}</td>
+                                    <td>${operation}</td>
+                                    <td>${symbol}</td>
+                                    <td>${amount}</td>
+                                    <td>${balance}</td>
+                                </tr>`;
+                    });
+                    tableBody.append(data);
+                }
+
+                showMoreBtn.click(function() {
+                    if (!hasMorePages) this.disabled = true;
+                    currentOffset += 20;
+                    fetchTransactions(maxLimit, currentOffset);
+                });
+                // Initial Fetch of 20 transactions when site loads
+                fetchTransactions(maxLimit, currentOffset);
+            })(jQuery);
+
+    </script>
+}
